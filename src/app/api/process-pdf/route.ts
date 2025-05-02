@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/[...nextauth]/route';
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { prisma } from '@/lib/prisma';
+import pdfParse from 'pdf-parse';
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,43 +14,70 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const pdfFile = formData.get('pdf') as File;
+    const title = formData.get('title') as string;
 
     if (!pdfFile) {
       return NextResponse.json({ error: 'No PDF file provided' }, { status: 400 });
     }
 
-    // Convert the file to base64
-    const buffer = await pdfFile.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
+    if (!title) {
+      return NextResponse.json({ error: 'No title provided' }, { status: 400 });
+    }
 
-    // Process the PDF with OpenAI
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
-      messages: [
-        {
-          role: "system",
-          content: "You are a helpful assistant that creates flashcards from PDF content. Extract key terms, definitions, concepts, and important facts. Format your response as a JSON array of objects with 'term' and 'explanation' properties.",
-        },
-        {
-          role: "user",
-          content: `Please analyze this PDF content and create flashcards: ${base64.substring(0, 4000)}`,
-        },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 4000,
+    // Convert the file to ArrayBuffer and then to Buffer
+    const arrayBuffer = await pdfFile.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // Extract text from PDF
+    const data = await pdfParse(buffer);
+    const text = data.text;
+
+    // Process with Llama
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'llama2',
+        prompt: `You are a helpful assistant that creates flashcards from study materials. Extract key terms, definitions, concepts, and important facts. Format your response as a JSON array of objects with 'term' and 'explanation' properties. Here is the content: ${text}`,
+        stream: false,
+      }),
     });
 
-    const content = response.choices[0].message.content;
+    const data2 = await response.json();
     let cards: Array<{ term: string; explanation: string }> = [];
 
     try {
-      const parsed = JSON.parse(content || '{}');
+      const parsed = JSON.parse(data2.response || '{}');
       cards = parsed.flashcards || [];
     } catch (e) {
-      console.error('Failed to parse OpenAI response:', e);
+      console.error('Failed to parse Llama response:', e);
     }
 
-    return NextResponse.json(cards);
+    // Store PDF file
+    const pdfUrl = `/uploads/${Date.now()}-${pdfFile.name}`;
+    // TODO: Implement actual file storage (e.g., AWS S3, local storage)
+
+    // Create flashcard set and cards in database
+    const flashcardSet = await prisma.flashcardSet.create({
+      data: {
+        title,
+        pdfUrl,
+        userId: session.user?.email || '',
+        flashcards: {
+          create: cards.map((card) => ({
+            term: card.term,
+            explanation: card.explanation,
+          })),
+        },
+      },
+      include: {
+        flashcards: true,
+      },
+    });
+
+    return NextResponse.json(flashcardSet);
   } catch (error) {
     console.error('Error processing PDF:', error);
     return NextResponse.json(

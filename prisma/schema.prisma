@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -36,13 +39,14 @@ model Session {
 
 model User {
   id            String         @id @default(cuid())
+  email         String         @unique
   name          String?
-  email         String?        @unique
-  emailVerified DateTime?
   image         String?
   accounts      Account[]
   sessions      Session[]
-  flashCardSets FlashCardSet[]
+  flashcardSets FlashcardSet[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 }
 
 model VerificationToken {
@@ -53,26 +57,24 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-model FlashCardSet {
-  id          String      @id @default(cuid())
+model FlashcardSet {
+  id          String     @id @default(cuid())
   title       String
   description String?
-  pdfUrl      String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  pdfUrl      String
   userId      String
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  flashCards  FlashCard[]
+  user        User       @relation(fields: [userId], references: [id])
+  flashcards  Flashcard[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 }
 
-model FlashCard {
-  id            String       @id @default(cuid())
-  term          String
-  explanation   String
-  known         Boolean      @default(false)
-  lastReviewed  DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  setId         String
-  flashCardSet  FlashCardSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+model Flashcard {
+  id             String       @id @default(cuid())
+  term           String
+  explanation    String
+  flashcardSetId String
+  flashcardSet   FlashcardSet @relation(fields: [flashcardSetId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 } 

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 export async function PATCH(
   request: NextRequest,
@@ -18,10 +16,10 @@ export async function PATCH(
     const { known } = await request.json();
 
     // Verify the user owns this flashcard
-    const flashcard = await prisma.flashCard.findUnique({
+    const flashcard = await prisma.flashcard.findUnique({
       where: { id: params.id },
       include: {
-        flashCardSet: {
+        flashcardSet: {
           include: {
             user: true,
           },
@@ -33,11 +31,11 @@ export async function PATCH(
       return NextResponse.json({ error: 'Flashcard not found' }, { status: 404 });
     }
 
-    if (flashcard.flashCardSet.user.email !== session.user.email) {
+    if (flashcard.flashcardSet.user.email !== session.user.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const updatedFlashcard = await prisma.flashCard.update({
+    const updatedFlashcard = await prisma.flashcard.update({
       where: { id: params.id },
       data: {
         known,

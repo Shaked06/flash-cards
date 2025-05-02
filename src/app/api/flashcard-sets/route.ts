@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../auth/[...nextauth]/route';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,11 +20,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const flashCardSet = await prisma.flashCardSet.create({
+    const flashcardSet = await prisma.flashcardSet.create({
       data: {
         title,
         userId: user.id,
-        flashCards: {
+        flashcards: {
           create: cards.map((card: { term: string; explanation: string }) => ({
             term: card.term,
             explanation: card.explanation,
@@ -34,11 +32,11 @@ export async function POST(request: NextRequest) {
         },
       },
       include: {
-        flashCards: true,
+        flashcards: true,
       },
     });
 
-    return NextResponse.json(flashCardSet);
+    return NextResponse.json(flashcardSet);
   } catch (error) {
     console.error('Error creating flashcard set:', error);
     return NextResponse.json(
@@ -51,29 +49,28 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
+      where: { email: session.user?.email || '' },
     });
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const flashCardSets = await prisma.flashCardSet.findMany({
-      where: { userId: user.id },
-      include: {
-        flashCards: true,
+    const flashcardSets = await prisma.flashcardSet.findMany({
+      where: {
+        userId: user.id,
       },
-      orderBy: {
-        createdAt: 'desc',
+      include: {
+        flashcards: true,
       },
     });
 
-    return NextResponse.json(flashCardSets);
+    return NextResponse.json(flashcardSets);
   } catch (error) {
     console.error('Error fetching flashcard sets:', error);
     return NextResponse.json(
